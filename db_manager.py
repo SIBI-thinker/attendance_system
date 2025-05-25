@@ -89,7 +89,7 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM faculty WHERE username = ?", (username,))
         user = self.cursor.fetchone()
         if user and user['password_hash'] == hash_password(password):
-            return {'faculty_id': user['faculty_id'], 'username': user['username'], 'is_admin': user['is_admin']}
+            return {'faculty_id': user['faculty_id'], 'username': user['username'], 'is_admin': user['is_admin'], 'full_name': user['full_name']}
         return None
 
     def get_all_faculty(self):
@@ -136,37 +136,45 @@ class DatabaseManager:
 
     # --- Attendance Methods ---
     def mark_attendance(self, student_id, date_str, status, faculty_id):
+        print(f"[DB_MARK_ATTENDANCE] Received: student_id={student_id}, date='{date_str}', status='{status}', faculty_id={faculty_id}") # DEBUG
         # Ensure date_str is YYYY-MM-DD
         try:
             datetime.datetime.strptime(date_str, '%Y-%m-%d')
         except ValueError:
-            print("Invalid date format for attendance. Use YYYY-MM-DD.")
+            print(f"[DB_MARK_ATTENDANCE_ERROR] Invalid date format for attendance: {date_str}. Use YYYY-MM-DD.") # DEBUG
             return False
         
-        # Check if attendance for this student on this date already exists
         self.cursor.execute('''
             SELECT attendance_id FROM attendance 
             WHERE student_id = ? AND date = ?
         ''', (student_id, date_str))
         existing_attendance = self.cursor.fetchone()
+        print(f"[DB_MARK_ATTENDANCE] Existing record for student {student_id} on {date_str}: {existing_attendance}") # DEBUG
 
-        if existing_attendance:
-            # Update existing record
-            self.cursor.execute('''
-                UPDATE attendance 
-                SET status = ?, marked_by_faculty_id = ?, timestamp = CURRENT_TIMESTAMP
-                WHERE attendance_id = ?
-            ''', (status, faculty_id, existing_attendance['attendance_id']))
-        else:
-            # Insert new record
-            self.cursor.execute('''
-                INSERT INTO attendance (student_id, date, status, marked_by_faculty_id)
-                VALUES (?, ?, ?, ?)
-            ''', (student_id, date_str, status, faculty_id))
-        self.conn.commit()
-        return True
+        try: # Add try-except for the database operations
+            if existing_attendance:
+                print(f"[DB_MARK_ATTENDANCE] Updating existing record ID: {existing_attendance['attendance_id']}") # DEBUG
+                self.cursor.execute('''
+                    UPDATE attendance 
+                    SET status = ?, marked_by_faculty_id = ?, timestamp = CURRENT_TIMESTAMP
+                    WHERE attendance_id = ?
+                ''', (status, faculty_id, existing_attendance['attendance_id']))
+            else:
+                print(f"[DB_MARK_ATTENDANCE] Inserting new record.") # DEBUG
+                self.cursor.execute('''
+                    INSERT INTO attendance (student_id, date, status, marked_by_faculty_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (student_id, date_str, status, faculty_id))
+            self.conn.commit()
+            print(f"[DB_MARK_ATTENDANCE] Commit successful for student {student_id} on {date_str}.") # DEBUG
+            return True
+        except Exception as e:
+            print(f"[DB_MARK_ATTENDANCE_ERROR] Database error: {e}") # DEBUG
+            self.conn.rollback() # Rollback on error
+            return False
 
     def get_attendance_report_student(self, student_id, start_date=None, end_date=None):
+        print(f"[DB_REPORT_STUDENT] Params: student_id={student_id}, start='{start_date}', end='{end_date}'") # DEBUG
         query = """
             SELECT a.date, a.status, s.name, s.roll_number, f.username as marked_by
             FROM attendance a
@@ -176,23 +184,32 @@ class DatabaseManager:
         """
         params = [student_id]
         if start_date and end_date:
-            query += " AND a.date BETWEEN ? AND ?"
+            query += " AND a.date BETWEEN ? AND ?" # Ensure date format matches DB
             params.extend([start_date, end_date])
         query += " ORDER BY a.date DESC"
+        print(f"[DB_REPORT_STUDENT] Query: {query}, Params: {params}") # DEBUG
         self.cursor.execute(query, params)
-        return self.cursor.fetchall()
+        results = self.cursor.fetchall()
+        print(f"[DB_REPORT_STUDENT] Results count: {len(results)}") # DEBUG
+        # for r in results: print(f"  Row: {dict(r)}") # Uncomment for detailed row data
+        return results
 
     def get_attendance_report_class(self, class_section, date_str):
+        print(f"[DB_REPORT_CLASS] Params: class_section='{class_section}', date='{date_str}'") # DEBUG
         query = """
-            SELECT s.roll_number, s.name, a.status, f.username as marked_by
+            SELECT s.student_id, s.roll_number, s.name, a.status, f.username as marked_by
             FROM students s
             LEFT JOIN attendance a ON s.student_id = a.student_id AND a.date = ?
             LEFT JOIN faculty f ON a.marked_by_faculty_id = f.faculty_id
             WHERE s.class_section = ?
             ORDER BY s.roll_number
         """
+        print(f"[DB_REPORT_CLASS] Query: {query}, Params: {(date_str, class_section)}") # DEBUG
         self.cursor.execute(query, (date_str, class_section))
-        return self.cursor.fetchall()
+        results = self.cursor.fetchall()
+        print(f"[DB_REPORT_CLASS] Results count: {len(results)}") # DEBUG
+        # for r in results: print(f"  Row: {dict(r)}") # Uncomment for detailed row data
+        return results
 
     # --- Admin Methods ---
     def backup_database(self, backup_path):

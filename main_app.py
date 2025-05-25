@@ -5,7 +5,6 @@ from tkcalendar import DateEntry # pip install tkcalendar
 import datetime
 
 # Assuming db_manager.py is in the same directory or accessible via PYTHONPATH
-# For a structured project, you'd use: from database.db_manager import DatabaseManager, db_manager
 from db_manager import DatabaseManager, db_manager # Use the global instance
 
 class AttendanceApp:
@@ -15,7 +14,8 @@ class AttendanceApp:
         self.root.geometry("800x600")
 
         self.db = db_manager # Use the shared instance
-        self.current_user = None # To store logged-in faculty info
+        self.current_user = None # To store logged-in faculty info {'faculty_id': ..., 'username': ..., 'is_admin': ..., 'full_name': ...}
+
 
         # Main frame that will hold different views
         self.main_frame = ttk.Frame(self.root, padding="10")
@@ -35,11 +35,15 @@ class AttendanceApp:
 
     def show_main_menu_view(self):
         self.clear_main_frame()
-        self.root.title(f"Student Attendance System - Welcome {self.current_user['username']}")
+        if self.current_user and self.current_user.get('full_name'):
+             self.root.title(f"Student Attendance System - Welcome {self.current_user['full_name']}")
+        elif self.current_user and self.current_user.get('username'):
+             self.root.title(f"Student Attendance System - Welcome {self.current_user['username']}")
+        else:
+            self.root.title("Student Attendance System - Main Menu")
         MainMenu(self.main_frame, self)
 
     def show_student_registration_view(self):
-        # This could be a Toplevel window or integrated into main_frame
         StudentRegistrationView(tk.Toplevel(self.root), self)
 
     def show_attendance_marking_view(self):
@@ -74,7 +78,6 @@ class LoginView(ttk.Frame):
 
         ttk.Button(self, text="Login", command=self.login).pack(pady=20)
         
-        # Bind Enter key to login
         self.username_entry.bind("<Return>", lambda event: self.password_entry.focus())
         self.password_entry.bind("<Return>", lambda event: self.login())
 
@@ -90,9 +93,11 @@ class LoginView(ttk.Frame):
         user = self.app_controller.db.verify_faculty(username, password)
         if user:
             self.app_controller.current_user = user
-            messagebox.showinfo("Success", f"Welcome {username}!")
+            print(f"[LOGIN_SUCCESS] User: {self.app_controller.current_user}") # DEBUG
+            messagebox.showinfo("Success", f"Welcome {user.get('full_name', username)}!")
             self.app_controller.show_main_menu_view()
         else:
+            print(f"[LOGIN_FAILED] For username: {username}") # DEBUG
             messagebox.showerror("Login Failed", "Invalid username or password.")
 
 
@@ -120,8 +125,8 @@ class StudentRegistrationView(tk.Toplevel):
         self.title("Student Registration")
         self.geometry("400x400")
         self.app_controller = app_controller
-        self.transient(parent) # Keep on top of parent
-        self.grab_set() # Modal
+        self.transient(parent) 
+        self.grab_set() 
 
         frame = ttk.Frame(self, padding="10")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -149,11 +154,11 @@ class StudentRegistrationView(tk.Toplevel):
         ttk.Button(frame, text="Register Student", command=self.register_student).grid(row=5, column=0, columnspan=2, pady=10)
 
     def register_student(self):
-        roll = self.roll_entry.get()
-        name = self.name_entry.get()
-        class_sec = self.class_entry.get()
-        email = self.email_entry.get()
-        phone = self.phone_entry.get()
+        roll = self.roll_entry.get().strip() # Strip roll number
+        name = self.name_entry.get().strip()
+        class_sec = self.class_entry.get().strip()
+        email = self.email_entry.get().strip()
+        phone = self.phone_entry.get().strip()
 
         if not all([roll, name, class_sec]):
             messagebox.showerror("Error", "Roll Number, Name, and Class/Section are required.", parent=self)
@@ -177,12 +182,11 @@ class AttendanceMarkingView(tk.Toplevel):
 
         self.selected_class = tk.StringVar()
         self.attendance_date = tk.StringVar(value=datetime.date.today().strftime('%Y-%m-%d'))
-        self.student_vars = {} # To store {student_id: (name, roll, status_var)}
+        self.student_vars = {} 
 
         frame = ttk.Frame(self, padding="10")
         frame.pack(fill=tk.BOTH, expand=True)
 
-        # Controls Frame
         controls_frame = ttk.Frame(frame)
         controls_frame.pack(pady=10, fill=tk.X)
 
@@ -199,9 +203,8 @@ class AttendanceMarkingView(tk.Toplevel):
         ttk.Label(controls_frame, text="Date:").pack(side=tk.LEFT, padx=5)
         self.date_entry = DateEntry(controls_frame, textvariable=self.attendance_date, date_pattern='yyyy-mm-dd', width=12)
         self.date_entry.pack(side=tk.LEFT, padx=5)
-        self.date_entry.bind("<<DateEntrySelected>>", self.load_students) # Reload if date changes
+        self.date_entry.bind("<<DateEntrySelected>>", self.load_students) 
 
-        # Student List Frame (Scrollable)
         list_frame_container = ttk.LabelFrame(frame, text="Students")
         list_frame_container.pack(fill=tk.BOTH, expand=True, pady=10)
 
@@ -224,7 +227,7 @@ class AttendanceMarkingView(tk.Toplevel):
         ttk.Button(frame, text="Submit Attendance", command=self.submit_attendance).pack(side=tk.RIGHT, padx=5, pady=5)
 
         if self.class_options and self.class_options[0] != "No classes found":
-            self.load_students() # Load students for the default selected class and date
+            self.load_students() 
 
     def load_students(self, event=None):
         for widget in self.scrollable_frame.winfo_children():
@@ -232,7 +235,8 @@ class AttendanceMarkingView(tk.Toplevel):
         self.student_vars.clear()
 
         class_sec = self.selected_class.get()
-        att_date = self.attendance_date.get()
+        att_date = self.attendance_date.get() 
+        print(f"[LOAD_STUDENTS] Class: {class_sec}, Date: {att_date}") 
 
         if not class_sec or class_sec == "No classes found":
             ttk.Label(self.scrollable_frame, text="Please select a class.").pack()
@@ -240,9 +244,9 @@ class AttendanceMarkingView(tk.Toplevel):
 
         students = self.app_controller.db.get_students_by_class(class_sec)
         
-        # Fetch existing attendance for this class and date to pre-fill statuses
         existing_attendance_raw = self.app_controller.db.get_attendance_report_class(class_sec, att_date)
         existing_attendance_map = {row['roll_number']: row['status'] for row in existing_attendance_raw if row['status']}
+        print(f"[LOAD_STUDENTS] Existing attendance map for {class_sec} on {att_date}: {existing_attendance_map}") 
 
 
         if not students:
@@ -259,7 +263,7 @@ class AttendanceMarkingView(tk.Toplevel):
             roll_no = student['roll_number']
             name = student['name']
             
-            status_var = tk.StringVar(value=existing_attendance_map.get(roll_no, "Present")) # Default to Present or existing
+            status_var = tk.StringVar(value=existing_attendance_map.get(roll_no, "Present")) 
 
             self.student_vars[student_id] = (name, roll_no, status_var)
 
@@ -276,23 +280,40 @@ class AttendanceMarkingView(tk.Toplevel):
             status_var.set(status)
 
     def submit_attendance(self):
-        att_date = self.attendance_date.get()
+        att_date = self.attendance_date.get() 
+        if not self.app_controller.current_user or 'faculty_id' not in self.app_controller.current_user:
+            messagebox.showerror("Error", "Faculty user not properly logged in. Cannot mark attendance.", parent=self)
+            print("[SUBMIT_ATTENDANCE_ERROR] current_user or faculty_id missing") 
+            return
         faculty_id = self.app_controller.current_user['faculty_id']
         
+        print(f"[SUBMIT_ATTENDANCE] Date: {att_date}, Faculty ID: {faculty_id}") 
         if not self.student_vars:
             messagebox.showwarning("No Students", "No students loaded to mark attendance.", parent=self)
             return
 
         marked_count = 0
+        success_count = 0
         try:
-            for student_id, (_name, _roll, status_var) in self.student_vars.items():
+            for student_id, (name, roll, status_var) in self.student_vars.items():
                 status = status_var.get()
-                self.app_controller.db.mark_attendance(student_id, att_date, status, faculty_id)
+                print(f"[SUBMIT_ATTENDANCE] Marking: Student ID={student_id} ({name}), Status='{status}'") 
+                if self.app_controller.db.mark_attendance(student_id, att_date, status, faculty_id):
+                    success_count += 1
                 marked_count +=1
-            messagebox.showinfo("Success", f"Attendance submitted for {marked_count} students.", parent=self)
-            self.destroy()
+            
+            if success_count == marked_count and marked_count > 0:
+                messagebox.showinfo("Success", f"Attendance submitted for {success_count} students.", parent=self)
+                self.destroy()
+            elif marked_count > 0 : 
+                 messagebox.showwarning("Partial Success", f"Attendance submitted for {success_count} out of {marked_count} students. Check console for errors.", parent=self)
+                 # self.destroy() 
+            else: 
+                messagebox.showerror("Error", "Failed to submit attendance for any student. Check console.", parent=self)
+
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to submit attendance: {e}", parent=self)
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}", parent=self)
+            print(f"[SUBMIT_ATTENDANCE_EXCEPTION] {e}") 
 
 
 class AttendanceReportView(tk.Toplevel):
@@ -308,16 +329,21 @@ class AttendanceReportView(tk.Toplevel):
         frame.pack(fill=tk.BOTH, expand=True)
 
         # --- Controls ---
-        controls_frame = ttk.Frame(frame)
-        controls_frame.pack(fill=tk.X, pady=5)
+        self.top_controls_container = ttk.Frame(frame)
+        self.top_controls_container.pack(fill=tk.X, pady=5)
 
-        self.report_type = tk.StringVar(value="student") # 'student' or 'class'
+        self.report_type = tk.StringVar(value="student") 
 
-        ttk.Radiobutton(controls_frame, text="Student Report", variable=self.report_type, value="student", command=self.toggle_report_type).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(controls_frame, text="Class Report", variable=self.report_type, value="class", command=self.toggle_report_type).pack(side=tk.LEFT, padx=5)
+        radio_button_frame = ttk.Frame(self.top_controls_container)
+        radio_button_frame.pack(side=tk.LEFT, padx=5)
 
-        # Student specific controls
-        self.student_controls_frame = ttk.Frame(controls_frame)
+        ttk.Radiobutton(radio_button_frame, text="Student Report", variable=self.report_type, value="student", command=self.toggle_report_type).pack(anchor=tk.W)
+        ttk.Radiobutton(radio_button_frame, text="Class Report", variable=self.report_type, value="class", command=self.toggle_report_type).pack(anchor=tk.W)
+
+        self.specific_controls_container = ttk.Frame(self.top_controls_container)
+        self.specific_controls_container.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+
+        self.student_controls_frame = ttk.Frame(self.specific_controls_container)
         ttk.Label(self.student_controls_frame, text="Roll No:").pack(side=tk.LEFT)
         self.roll_entry = ttk.Entry(self.student_controls_frame, width=15)
         self.roll_entry.pack(side=tk.LEFT, padx=5)
@@ -328,21 +354,20 @@ class AttendanceReportView(tk.Toplevel):
         self.end_date_entry = DateEntry(self.student_controls_frame, date_pattern='yyyy-mm-dd', width=12)
         self.end_date_entry.pack(side=tk.LEFT, padx=5)
 
-        # Class specific controls
-        self.class_controls_frame = ttk.Frame(controls_frame)
+        self.class_controls_frame = ttk.Frame(self.specific_controls_container)
         ttk.Label(self.class_controls_frame, text="Select Class:").pack(side=tk.LEFT)
         self.class_options = self.app_controller.db.get_distinct_classes()
         if not self.class_options: self.class_options = ["No classes"]
         self.class_combo = ttk.Combobox(self.class_controls_frame, values=self.class_options, state="readonly", width=15)
-        if self.class_options[0] != "No classes": self.class_combo.set(self.class_options[0])
+        if self.class_options and self.class_options[0] != "No classes": # check if class_options is not empty
+            self.class_combo.set(self.class_options[0])
         self.class_combo.pack(side=tk.LEFT, padx=5)
         ttk.Label(self.class_controls_frame, text="Date:").pack(side=tk.LEFT)
         self.class_date_entry = DateEntry(self.class_controls_frame, date_pattern='yyyy-mm-dd', width=12)
         self.class_date_entry.pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(controls_frame, text="Generate Report", command=self.generate_report).pack(side=tk.LEFT, padx=10)
+        ttk.Button(self.top_controls_container, text="Generate Report", command=self.generate_report).pack(side=tk.LEFT, padx=10, pady=(0,3)) 
 
-        # --- Report Display Area (Treeview) ---
         report_display_frame = ttk.Frame(frame)
         report_display_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
@@ -355,41 +380,55 @@ class AttendanceReportView(tk.Toplevel):
         self.tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
         self.tree.pack(fill=tk.BOTH, expand=True)
         
-        self.toggle_report_type() # Initial setup of controls
+        self.toggle_report_type() 
 
     def toggle_report_type(self):
-        if self.report_type.get() == "student":
-            self.student_controls_frame.pack(side=tk.LEFT, padx=10, after=self.class_controls_frame) # Ensure it's packed
-            self.class_controls_frame.pack_forget()
-        else: # class
-            self.class_controls_frame.pack(side=tk.LEFT, padx=10, after=self.student_controls_frame) # Ensure it's packed
-            self.student_controls_frame.pack_forget()
+        self.student_controls_frame.pack_forget()
+        self.class_controls_frame.pack_forget()
 
+        if self.report_type.get() == "student":
+            self.student_controls_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        else: 
+            self.class_controls_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
     def generate_report(self):
-        # Clear previous report
         for i in self.tree.get_children():
             self.tree.delete(i)
-        self.tree["columns"] = [] # Reset columns
+        self.tree["columns"] = []
 
         report_type = self.report_type.get()
+        print(f"[GENERATE_REPORT] Type: {report_type}")
 
         if report_type == "student":
-            roll_no = self.roll_entry.get()
-            start_date = self.start_date_entry.get_date().strftime('%Y-%m-%d')
-            end_date = self.end_date_entry.get_date().strftime('%Y-%m-%d')
+            roll_no_raw = self.roll_entry.get()
+            roll_no = roll_no_raw.strip() 
 
-            if not roll_no:
-                messagebox.showerror("Error", "Roll Number is required for student report.", parent=self)
+            print(f"[GENERATE_REPORT_STUDENT] Raw Roll No from entry: '{roll_no_raw}'") 
+            print(f"[GENERATE_REPORT_STUDENT] Stripped Roll No: '{roll_no}'") 
+
+            if not roll_no: 
+                messagebox.showerror("Error", "Roll Number is required for student report. Please enter a valid roll number.", parent=self)
+                print("[GENERATE_REPORT_STUDENT_ERROR] Roll number is empty after stripping.") 
                 return
-            
+
+            start_date_obj = self.start_date_entry.get_date()
+            end_date_obj = self.end_date_entry.get_date()
+
+            start_date = start_date_obj.strftime('%Y-%m-%d') if start_date_obj else None
+            end_date = end_date_obj.strftime('%Y-%m-%d') if end_date_obj else None
+
+            print(f"[GENERATE_REPORT_STUDENT] Final Params - Roll: '{roll_no}', Start: {start_date}, End: {end_date}") 
+
             student = self.app_controller.db.get_student_by_roll(roll_no)
             if not student:
-                messagebox.showerror("Error", f"Student with Roll Number {roll_no} not found.", parent=self)
+                messagebox.showerror("Error", f"Student with Roll Number '{roll_no}' not found.", parent=self)
+                print(f"[GENERATE_REPORT_STUDENT_ERROR] Student not found for roll: '{roll_no}'") 
                 return
 
+            print(f"[GENERATE_REPORT_STUDENT] Found student: {dict(student)}")
             report_data = self.app_controller.db.get_attendance_report_student(student['student_id'], start_date, end_date)
-            
+            print(f"[GENERATE_REPORT_STUDENT] Data from DB: {len(report_data)} records")
+
             self.tree["columns"] = ("date", "status", "marked_by")
             self.tree.heading("date", text="Date")
             self.tree.heading("status", text="Status")
@@ -397,25 +436,29 @@ class AttendanceReportView(tk.Toplevel):
             self.tree.column("date", width=100, anchor=tk.CENTER)
             self.tree.column("status", width=100, anchor=tk.CENTER)
             self.tree.column("marked_by", width=150, anchor=tk.W)
-            
+
             if report_data:
-                ttk.Label(self, text=f"Report for: {student['name']} ({student['roll_number']})").pack(before=self.tree, pady=5) # Temporary label
-                for row in report_data:
+                for row_idx, row in enumerate(report_data):
+                    # print(f"[GENERATE_REPORT_STUDENT_ROW_{row_idx}] Date: {row['date']}, Status: {row['status']}, Marked By: {row['marked_by']}")
                     self.tree.insert("", tk.END, values=(row['date'], row['status'], row['marked_by'] or 'N/A'))
             else:
-                messagebox.showinfo("No Data", "No attendance records found for this student in the selected range.", parent=self)
+                messagebox.showinfo("No Data", f"No attendance records found for student '{roll_no}' in the selected range.", parent=self)
+                print(f"[GENERATE_REPORT_STUDENT_INFO] No data for roll: '{roll_no}'") 
 
 
         elif report_type == "class":
             class_sec = self.class_combo.get()
-            report_date = self.class_date_entry.get_date().strftime('%Y-%m-%d')
+            report_date_obj = self.class_date_entry.get_date()
+            report_date = report_date_obj.strftime('%Y-%m-%d') if report_date_obj else None
+            print(f"[GENERATE_REPORT_CLASS] Class: {class_sec}, Date: {report_date}")
 
             if not class_sec or class_sec == "No classes":
                 messagebox.showerror("Error", "Class selection is required for class report.", parent=self)
                 return
 
             report_data = self.app_controller.db.get_attendance_report_class(class_sec, report_date)
-            
+            print(f"[GENERATE_REPORT_CLASS] Data from DB: {len(report_data)} records")
+
             self.tree["columns"] = ("roll_number", "name", "status", "marked_by")
             self.tree.heading("roll_number", text="Roll No.")
             self.tree.heading("name", text="Name")
@@ -427,8 +470,9 @@ class AttendanceReportView(tk.Toplevel):
             self.tree.column("marked_by", width=150, anchor=tk.W)
 
             if report_data:
-                for row in report_data:
-                    self.tree.insert("", tk.END, values=(row['roll_number'], row['name'], row['status'] or 'N/M', row['marked_by'] or 'N/A')) # N/M = Not Marked
+                for row_idx, row in enumerate(report_data):
+                    # print(f"[GENERATE_REPORT_CLASS_ROW_{row_idx}] Roll: {row['roll_number']}, Name: {row['name']}, Status: {row['status']}, Marked By: {row['marked_by']}")
+                    self.tree.insert("", tk.END, values=(row['roll_number'], row['name'], row['status'] or 'N/M', row['marked_by'] or 'N/A'))
             else:
                 messagebox.showinfo("No Data", "No students or attendance records found for this class on this date.", parent=self)
 
@@ -445,23 +489,19 @@ class AdminPanelView(tk.Toplevel):
         notebook = ttk.Notebook(self)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # --- User Management Tab ---
         user_mgmt_tab = ttk.Frame(notebook)
         notebook.add(user_mgmt_tab, text="User Management")
         self.setup_user_management_tab(user_mgmt_tab)
 
-        # --- Data Backup Tab ---
         backup_tab = ttk.Frame(notebook)
         notebook.add(backup_tab, text="Data Backup")
         self.setup_backup_tab(backup_tab)
 
-        # --- System Config (Placeholder) ---
         config_tab = ttk.Frame(notebook)
         notebook.add(config_tab, text="System Config")
         ttk.Label(config_tab, text="System configuration options (e.g., theme, default settings) - Placeholder").pack(padx=20, pady=20)
 
     def setup_user_management_tab(self, tab):
-        # Add New Faculty
         add_faculty_frame = ttk.LabelFrame(tab, text="Add New Faculty/Admin")
         add_faculty_frame.pack(fill=tk.X, padx=10, pady=10)
 
@@ -481,7 +521,6 @@ class AdminPanelView(tk.Toplevel):
         ttk.Checkbutton(add_faculty_frame, text="Is Admin?", variable=self.new_faculty_is_admin).grid(row=1, column=2, padx=5, pady=2)
         ttk.Button(add_faculty_frame, text="Add User", command=self.add_new_faculty_user).grid(row=1, column=3, padx=5, pady=5)
 
-        # List and Manage Existing Faculty
         list_faculty_frame = ttk.LabelFrame(tab, text="Manage Existing Users")
         list_faculty_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -502,20 +541,15 @@ class AdminPanelView(tk.Toplevel):
 
         self.faculty_tree.bind("<<TreeviewSelect>>", self.on_faculty_select)
 
-        # Role change controls
-        role_change_frame = ttk.Frame(list_faculty_frame) # This will be placed by pack_forget/pack
+        role_change_frame = ttk.Frame(list_faculty_frame) 
         self.selected_faculty_label = ttk.Label(role_change_frame, text="Selected: None")
         self.selected_faculty_label.pack(pady=2)
         self.role_var = tk.IntVar()
         self.admin_check = ttk.Checkbutton(role_change_frame, text="Set as Admin", variable=self.role_var, command=self.update_selected_faculty_role)
         self.admin_check.pack(pady=2)
-        self.admin_check.configure(state=tk.DISABLED) # Disabled until a user is selected
+        self.admin_check.configure(state=tk.DISABLED) 
 
-        # Pack role_change_frame to the right of the treeview or below
-        # For simplicity, let's put it below the tree for now.
-        # A better layout would use .grid or more frames.
-        # For now, we'll just pack it into the main tab.
-        role_change_frame.pack(pady=5, after=self.faculty_tree) # Pack it after the treeview
+        role_change_frame.pack(pady=5, after=self.faculty_tree) 
 
         self.load_faculty_users()
 
@@ -550,7 +584,7 @@ class AdminPanelView(tk.Toplevel):
             messagebox.showerror("Error", "Username already exists or database error.", parent=self)
 
     def on_faculty_select(self, event):
-        selected_item = self.faculty_tree.focus() # Get selected item
+        selected_item = self.faculty_tree.focus() 
         if not selected_item:
             self.admin_check.configure(state=tk.DISABLED)
             self.selected_faculty_label.config(text="Selected: None")
@@ -564,8 +598,7 @@ class AdminPanelView(tk.Toplevel):
         self.selected_faculty_label.config(text=f"Selected: {username} (ID: {faculty_id})")
         self.role_var.set(1 if is_admin_text == "Yes" else 0)
         
-        # Prevent admin from de-admining themselves if they are the only admin
-        if username == self.app_controller.current_user['username']:
+        if self.app_controller.current_user and username == self.app_controller.current_user['username']: # Check current_user exists
             admins = [u for u in self.app_controller.db.get_all_faculty() if u['is_admin']]
             if len(admins) == 1 and admins[0]['username'] == username:
                 self.admin_check.configure(state=tk.DISABLED)
@@ -587,7 +620,7 @@ class AdminPanelView(tk.Toplevel):
 
         if self.app_controller.db.update_faculty_role(faculty_id, new_is_admin_val):
             messagebox.showinfo("Success", "User role updated.", parent=self)
-            self.load_faculty_users() # Refresh list
+            self.load_faculty_users() 
         else:
             messagebox.showerror("Error", "Failed to update user role.", parent=self)
 
@@ -596,8 +629,6 @@ class AdminPanelView(tk.Toplevel):
         ttk.Label(tab, text="Database Backup", font=("Arial", 14)).pack(pady=10)
         ttk.Button(tab, text="Backup Database", command=self.backup_db).pack(pady=10)
         ttk.Label(tab, text="Note: This creates a copy of the current database file.").pack(pady=5)
-        # Restore functionality would be more complex (e.g., closing current DB, replacing file, reopening)
-        # For now, we'll stick to backup.
 
     def backup_db(self):
         backup_file_path = filedialog.asksaveasfilename(
